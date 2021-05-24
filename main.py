@@ -11,8 +11,18 @@ from threading import Thread
 from playwright.async_api import async_playwright
 
 parser = argparse.ArgumentParser(description='Script to generate an unlabeled dataset for Poseidon')
-parser.add_argument('--threads', dest='threads', action='store', type=int, required=True, help='How many browsers to run in parallel for collection')
+parser.add_argument('--threads', dest='threads', action='store', type=int, default=1, help='How many browsers to run in parallel for collection')
+parser.add_argument('--proxy-url', dest='proxy_url', action='store', type=str, required=False, help='The url of the proxy')
+parser.add_argument('--proxy-port-min', dest='proxy_port_min', action='store', type=int, required=False, help='The minimum port (if one port then set --proxy-port-max to --proxy-port-min)')
+parser.add_argument('--proxy-port-max', dest='proxy_port_max', action='store', type=int, required=False, help='The maximum port')
+parser.add_argument('--proxy-user', dest='proxy_user', action='store', type=str, required=False, help='Username of proxy auth (if auth exists)')
+parser.add_argument('--proxy-pass', dest='proxy_pass', action='store', type=str, required=False, help='Password of proxy auth (if auth exists)')
 args = parser.parse_args()
+
+if args.proxy_url and (args.proxy_port_min is None or args.proxy_port_max is None):
+    parser.error("--proxy-url requires --proxy-port-min and --proxy-port-max.")
+if args.proxy_url and len([x for x in (args.proxy_user,args.proxy_pass) if x is not None]) == 1:
+    parser.error("--proxy-user and --proxy-pass must be given together.")
 
 LANDING="https://recaptcha-demo.appspot.com/recaptcha-v2-invisible.php"
 
@@ -31,7 +41,14 @@ async def capture_route(session, route):
         with open('document.html') as doc:
             return await route.fulfill(body=doc.read(), content_type='text/html', status=200, headers={ 'Access-Control-Allow-Origin': '*' })
 
-    async with session.request(method=method, url=url, data=post_data_buffer, headers=headers) as response:
+    proxy = None
+    if args.proxy_url is not None:
+        if args.proxy_user is not None:
+            proxy = 'http://{}:{}@{}:{}'.format(args.proxy_user, args.proxy_pass, args.proxy_url, random.randint(args.proxy_port_min, args.proxy_port_max))
+        else:
+            proxy = 'http://{}:{}'.format(args.proxy_url, random.randint(args.proxy_port_min, args.proxy_port_max))
+        
+    async with session.request(method=method, url=url, data=post_data_buffer, headers=headers, proxy=proxy) as response:
         content_type = response.headers.get('content-type')
         
         print(response.status, response.url)
@@ -54,9 +71,12 @@ async def main_async():
             page = await context.new_page()
 
             async def load_page():
-                await page.goto(LANDING)
-                el = await page.wait_for_selector('#submit')
-                await el.click()
+                try:
+                    await page.goto(LANDING)
+                    el = await page.wait_for_selector('#submit')
+                    await el.click()
+                except Exception:
+                    return await load_page()
 
             async def ensure_image(response):
                 if '/api2/payload' in response.url:
@@ -101,7 +121,6 @@ def main():
     asyncio.run(main_async())
 
 if __name__ == '__main__':
-
     for i in range(args.threads):
         Thread(target=main).start()
         
