@@ -59,10 +59,10 @@ async def main_async():
     async with aiohttp.ClientSession() as session:
         async with async_playwright() as p:
             iphone_11 = p.devices["iPhone 11 Pro"]
-            browser = await p.webkit.launch(headless=False, devtools=True)
+            browser = await p.chromium.launch(headless=True)
 
             context = await browser.new_context(
-                **iphone_11,
+                # **iphone_11,
                 locale="en-US",
                 geolocation={"longitude": 12.492507, "latitude": 41.889938 },
                 permissions=["geolocation"],
