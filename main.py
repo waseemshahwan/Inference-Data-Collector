@@ -59,7 +59,7 @@ async def main_async():
     async with aiohttp.ClientSession() as session:
         async with async_playwright() as p:
             iphone_11 = p.devices["iPhone 11 Pro"]
-            browser = await p.webkit.launch(headless=True, devtools=True)
+            browser = await p.webkit.launch(headless=False, devtools=True)
 
             context = await browser.new_context(
                 **iphone_11,
@@ -71,18 +71,24 @@ async def main_async():
             page = await context.new_page()
 
             async def load_page():
-                try:
-                    await page.goto(LANDING)
-                    el = await page.wait_for_selector('#submit')
+                if len(list(filter(lambda x: 'bframe' in x.url, page.main_frame.child_frames))) > 0:
+                    bframe = list(filter(lambda x: 'bframe' in x.url, page.main_frame.child_frames))[0]
+                    print(bframe)
+                    el = await bframe.wait_for_selector('.rc-button-reload')
                     await el.click()
-                except Exception:
-                    return await load_page()
+                else:
+                    try:
+                        await page.goto(LANDING)
+                        el = await page.wait_for_selector('#submit')
+                        await el.click()
+                    except Exception:
+                        return await load_page()
 
             async def ensure_image(response):
                 if '/api2/payload' in response.url:
-                    await download_image(response)
-                elif '/api2/userverify' in response.url:
-                    await load_page()
+                    asyncio.ensure_future(download_image(response))
+                elif '/api2/userverify' not in response.url: return
+                await load_page()
             
             async def check_labels(frame):
                 if 'bframe' in frame.url:
@@ -101,7 +107,8 @@ async def main_async():
                         f.write(json.dumps(data))
                         f.truncate()
                     
-                    await load_page()
+                    return await load_page()
+                    # return await check_labels(frame)
 
             await page.route('**', lambda route: asyncio.ensure_future(capture_route(session, route)))
             page.on('response', lambda response: asyncio.ensure_future(ensure_image(response)))
