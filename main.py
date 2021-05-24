@@ -10,7 +10,9 @@ import argparse
 from threading import Thread
 from playwright.async_api import async_playwright
 
-arguments = argparse.ArgumentParser()
+parser = argparse.ArgumentParser(description='Script to generate an unlabeled dataset for Poseidon')
+parser.add_argument('--threads', dest='threads', action='store', type=int, required=True, help='How many browsers to run in parallel for collection')
+args = parser.parse_args()
 
 LANDING="https://recaptcha-demo.appspot.com/recaptcha-v2-invisible.php"
 
@@ -100,6 +102,6 @@ def main():
 
 if __name__ == '__main__':
 
-    for i in range(5):
+    for i in range(args.threads):
         Thread(target=main).start()
         
